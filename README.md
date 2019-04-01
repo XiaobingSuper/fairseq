@@ -1,109 +1,92 @@
-# Introduction <img src="fairseq_logo.png" width="50"> 
 
-Fairseq(-py) is a sequence modeling toolkit that allows researchers and
-developers to train custom models for translation, summarization, language
-modeling and other text generation tasks. It provides reference implementations
-of various sequence-to-sequence models, including:
-- **Convolutional Neural Networks (CNN)**
-  - [Dauphin et al. (2017): Language Modeling with Gated Convolutional Networks](examples/language_model/conv_lm/README.md)
-  - [Gehring et al. (2017): Convolutional Sequence to Sequence Learning](examples/conv_seq2seq/README.md)
-  - [Edunov et al. (2018): Classical Structured Prediction Losses for Sequence to Sequence Learning](https://github.com/pytorch/fairseq/tree/classic_seqlevel)
-  - [Fan et al. (2018): Hierarchical Neural Story Generation](examples/stories/README.md)
-- **LightConv and DynamicConv models**
-  - **_New_** [Wu et al. (2019): Pay Less Attention with Lightweight and Dynamic Convolutions](examples/pay_less_attention_paper/README.md)
-- **Long Short-Term Memory (LSTM) networks**
-  - [Luong et al. (2015): Effective Approaches to Attention-based Neural Machine Translation](https://arxiv.org/abs/1508.04025)
-  - [Wiseman and Rush (2016): Sequence-to-Sequence Learning as Beam-Search Optimization](https://arxiv.org/abs/1606.02960)
-- **Transformer (self-attention) networks**
-  - [Vaswani et al. (2017): Attention Is All You Need](https://arxiv.org/abs/1706.03762)
-  - [Ott et al. (2018): Scaling Neural Machine Translation](examples/scaling_nmt/README.md)
-  - [Edunov et al. (2018): Understanding Back-Translation at Scale](examples/backtranslation/README.md)
-  - **_New_** [Baevski and Auli (2018): Adaptive Input Representations for Neural Language Modeling](examples/language_model/transformer_lm/README.md)
-  - **_New_** [Shen et al. (2019): Mixture Models for Diverse Machine Translation: Tricks of the Trade](examples/translation_moe/README.md)
+# 1. Problem 
 
-Fairseq features:
-- multi-GPU (distributed) training on one machine or across multiple machines
-- fast generation on both CPU and GPU with multiple search algorithms implemented:
-  - beam search
-  - Diverse Beam Search ([Vijayakumar et al., 2016](https://arxiv.org/abs/1610.02424))
-  - sampling (unconstrained and top-k)
-- large mini-batch training even on a single GPU via delayed updates
-- fast half-precision floating point (FP16) training
-- extensible: easily register new models, criterions, tasks, optimizers and learning rate schedulers
+This problem uses Attention mechanisms to do language translation.
 
-We also provide [pre-trained models](#pre-trained-models-and-examples) for several benchmark
-translation and language modeling datasets.
+## Requirements
+* [PyTorch](https://pytorch.org/) for CPU and GPU version.
 
-![Model](fairseq.gif)
+# 2. Directions
 
-# Requirements and Installation
+### Steps to download and verify data
 
-* [PyTorch](http://pytorch.org/) version >= 1.0.0
-* Python version >= 3.6
-* For training new models, you'll also need an NVIDIA GPU and [NCCL](https://github.com/NVIDIA/nccl)
+Downloading and preprocessing the data is handled inside submission scripts. To do this manually run 
+    DATASET_DIR='/your/path/to/dataset/' bash run_preprocessing.sh
+    
+### Steps to run and time
 
-Please follow the instructions here to install PyTorch: https://github.com/pytorch/pytorch#installation.
+## Steps to launch training
 
-If you use Docker make sure to increase the shared memory size either with
-`--ipc=host` or `--shm-size` as command line options to `nvidia-docker run`.
+Run the `run_and_time_gpu.sh` for GPU device
 
-After PyTorch is installed, you can install fairseq with `pip`:
-```
-pip install fairseq
+```bash
+source run_and_time_gpu.sh
 ```
 
-**Installing from source**
-
-To install fairseq from source and develop locally:
+Run the `run_and_time_cpu.sh` script for CPU device(multi-instance)
+```bash
+source run_and_time_cpu.sh
 ```
-git clone https://github.com/pytorch/fairseq
-cd fairseq
-pip install --editable .
-```
+Note:  You can change the seed number in `run_and_training_cpu.sh` or `run_and_training_gpu.sh`
 
-**Improved training speed**
+# 3. Dataset/Environment
+### Publication/Attribution
+We use WMT17 ende training for tranding, and we evaluate using the WMT 2014 English-to-German translation task. See http://statmt.org/wmt17/translation-task.html for more information. 
 
-Training speed can be further improved by installing NVIDIA's
-[apex](https://github.com/NVIDIA/apex) library with the `--cuda_ext` option.
-fairseq will automatically switch to the faster modules provided by apex.
 
-# Getting Started
+### Data preprocessing
+We combine all the files together and subtokenize the data into a vocabulary.  
 
-The [full documentation](https://fairseq.readthedocs.io/) contains instructions
-for getting started, training new models and extending fairseq with new model
-types and tasks.
+### Training and test data separation
+We use the train and evaluation sets provided explicitly by the authors.
 
-# Pre-trained models and examples
+### Training data order
+We split the data into 100 blocks, and we shuffle internally in the blocks. 
 
-We provide pre-trained models and pre-processed, binarized test sets for several tasks listed below,
-as well as example training and evaluation commands.
 
-- [Translation](examples/translation/README.md): convolutional and transformer models are available
-- [Language Modeling](examples/language_model/README.md): convolutional models are available
+# 4. Model
+### Publication/Attribution
 
-We also have more detailed READMEs to reproduce results from specific papers:
-- [Shen et al. (2019) Mixture Models for Diverse Machine Translation: Tricks of the Trade](examples/translation_moe/README.md)
-- [Wu et al. (2019): Pay Less Attention with Lightweight and Dynamic Convolutions](examples/pay_less_attention_paper/README.md)
-- [Edunov et al. (2018): Understanding Back-Translation at Scale](examples/backtranslation/README.md)
-- [Edunov et al. (2018): Classical Structured Prediction Losses for Sequence to Sequence Learning](https://github.com/pytorch/fairseq/tree/classic_seqlevel)
-- [Fan et al. (2018): Hierarchical Neural Story Generation](examples/stories/README.md)
-- [Ott et al. (2018): Scaling Neural Machine Translation](examples/scaling_nmt/README.md)
-- [Gehring et al. (2017): Convolutional Sequence to Sequence Learning](examples/conv_seq2seq/README.md)
-- [Dauphin et al. (2017): Language Modeling with Gated Convolutional Networks](examples/language_model/conv_lm/README.md)
+This is an implementation of the Transformer translation model as described in the [Attention is All You Need](https://arxiv.org/abs/1706.03762) paper. Based on the code provided by the authors: [Transformer code](https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/models/transformer.py) from [Tensor2Tensor](https://github.com/tensorflow/tensor2tensor).
 
-# Join the fairseq community
+### Structure 
 
-* Facebook page: https://www.facebook.com/groups/fairseq.users
-* Google group: https://groups.google.com/forum/#!forum/fairseq-users
+Transformer is a neural network architecture that solves sequence to sequence problems using attention mechanisms. Unlike traditional neural seq2seq models, Transformer does not involve recurrent connections. The attention mechanism learns dependencies between tokens in two sequences. Since attention weights apply to all tokens in the sequences, the Tranformer model is able to easily capture long-distance dependencies.
 
-# License
-fairseq(-py) is BSD-licensed.
-The license applies to the pre-trained models as well.
-We also provide an additional patent grant.
+Transformer's overall structure follows the standard encoder-decoder pattern. The encoder uses self-attention to compute a representation of the input sequence. The decoder generates the output sequence one token at a time, taking the encoder output and previous decoder-outputted tokens as inputs.
 
-# Credits
-This is a PyTorch version of
-[fairseq](https://github.com/facebookresearch/fairseq), a sequence-to-sequence
-learning toolkit from Facebook AI Research. The original authors of this
-reimplementation are (in no particular order) Sergey Edunov, Myle Ott, and Sam
-Gross.
+The model also applies embeddings on the input and output tokens, and adds a constant positional encoding. The positional encoding adds information about the position of each token.
+
+
+### Weight and bias initialization
+
+We have two sets of weights to initialize: embeddings and the transformer network. 
+
+The transformer network is initialized using the standard tensorflow variance initalizer. The embedding are initialized using the tensorflow random uniform initializer. 
+
+### Loss function
+Cross entropy loss while taking the padding into consideration, padding is not considered part of loss.
+
+### Optimizer
+We use the same optimizer as the original authors, which is the Adam Optimizer. We batch for a single P100 GPU of 4096. 
+
+# 5. Quality
+
+### Quality metric
+We use the BLEU scores with data from [Attention is All You Need](https://arxiv.org/abs/1706.03762). 
+
+
+    https://nlp.stanford.edu/projects/nmt/data/wmt14.en-de/newstest2014.en
+    https://nlp.stanford.edu/projects/nmt/data/wmt14.en-de/newstest2014.de
+
+
+### Quality target
+We currently run to a BLEU score (uncased) of 25. This was picked as a cut-off point based on time. 
+
+
+### Evaluation frequency
+Evaluation of BLEU score is done after every epoch.
+
+
+### Evaluation thoroughness
+Evaluation uses all of `newstest2014.en`.

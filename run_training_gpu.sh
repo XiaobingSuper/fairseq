@@ -5,7 +5,7 @@ echo "STARTING TIMING RUN AT ${START_FMT}"
 
 SEED=${SEED:-1}
 MAX_TOKENS=${MAX_TOKENS:-5120}
-DATASET_DIR="./data1"
+DATASET_DIR="./data"
 
 # Includes online scoring
 python  train.py ${DATASET_DIR} \
