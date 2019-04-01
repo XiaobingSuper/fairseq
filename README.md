@@ -19,10 +19,16 @@ DATASET_DIR='/your/path/to/fairsep/data/' bash run_preprocessing.sh
 
 ### Steps to launch training
 
-Install fairseq 
+Install fairseq:
 
 ```bash
 pip install --editable .
+``` 
+
+Install mlperf_compliance:
+
+```bash
+pip install mlperf_compliance
 ``` 
 
 Run the `run_and_time_gpu.sh` for GPU device
