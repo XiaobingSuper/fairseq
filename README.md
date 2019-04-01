@@ -11,7 +11,7 @@ This problem uses Attention mechanisms to do language translation.
 ### Steps to download and verify data
 
 Downloading and preprocessing the data is handled inside submission scripts. To do this manually run 
-``    
+```  
 DATASET_DIR='/your/path/to/fairsep/data/' bash run_preprocessing.sh
 ```
     
