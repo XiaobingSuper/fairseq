@@ -111,3 +111,10 @@ fairseq/temporal_convolution_tbc
 
 # data
 data-bin/
+
+data/
+data1/
+examples/translation/mosesdecoder/
+examples/translation/orig/
+examples/translation/subword-nmt/
+examples/translation/wmt14_en_de/

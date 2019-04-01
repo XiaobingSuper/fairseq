@@ -41,9 +41,9 @@ if [ "$1" == "--icml17" ]; then
     URLS[2]="http://statmt.org/wmt14/training-parallel-nc-v9.tgz"
     FILES[2]="training-parallel-nc-v9.tgz"
     CORPORA[2]="training/news-commentary-v9.de-en"
-    OUTDIR=wmt14_en_de
-else
     OUTDIR=wmt17_en_de
+else
+    OUTDIR=wmt14_en_de
 fi
 
 if [ ! -d "$SCRIPTS" ]; then

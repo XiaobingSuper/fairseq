@@ -14,15 +14,22 @@ import itertools
 import os
 import math
 import random
+import time
 
 import torch
 
-from fairseq import distributed_utils, options, progress_bar, tasks, utils
+from copy import deepcopy
+from functools import reduce
+
+from fairseq import data, distributed_utils, options, progress_bar, tasks, utils, bleu, tokenizer
 from fairseq.data import iterators
 from fairseq.trainer import Trainer
-from fairseq.meters import AverageMeter, StopwatchMeter
+from fairseq.meters import AverageMeter, StopwatchMeter, TimeMeter
 from fairseq.utils import import_user_module
+from fairseq.sequence_generator import SequenceGenerator
+from fairseq.data import dictionary
 
+from mlperf_compliance import mlperf_log
 
 def main(args, init_distributed=False):
     import_user_module(args)
@@ -33,10 +40,31 @@ def main(args, init_distributed=False):
 
     if torch.cuda.is_available() and not args.cpu:
         torch.cuda.set_device(args.device_id)
-    torch.manual_seed(args.seed)
 
+    from mlperf_compliance.mlperf_log import transformer_print
+    transformer_print(key=mlperf_log.RUN_CLEAR_CACHES) #before this tag we should run clearing caches on the host
+
+    transformer_print(key=mlperf_log.OPT_NAME, value=args.optimizer)
+    transformer_print(key=mlperf_log.OPT_LR, value=args.lr)
+    transformer_print(key=mlperf_log.OPT_HP_ADAM_BETA1, value=eval(args.adam_betas)[0])
+    transformer_print(key=mlperf_log.OPT_HP_ADAM_BETA2, value=eval(args.adam_betas)[1])
+    transformer_print(key=mlperf_log.OPT_HP_ADAM_EPSILON, value=args.adam_eps)
+
+    torch.manual_seed(args.seed)
+    transformer_print(key=mlperf_log.RUN_SET_RANDOM_SEED, value=args.seed)
+
+
+    transformer_print(key=mlperf_log.RUN_START)
     # Setup task, e.g., translation, language modeling, etc.
     task = tasks.setup_task(args)
+
+    transformer_print(key=mlperf_log.MODEL_HP_SEQ_BEAM_SEARCH,
+            value={'alpha':args.lenpen,
+                'beam_size':args.beam,
+                'extra_decode_length':args.max_len_b,
+                'vocab_size':task.target_dictionary.__len__()
+                }
+            )
 
     # Load dataset splits
     load_dataset_splits(task, ['train', 'valid'])
@@ -68,13 +96,22 @@ def main(args, init_distributed=False):
     oom_batch = task.dataset('train').get_dummy_batch(1, max_positions)
 
     # Build trainer
-    trainer = Trainer(args, task, model, criterion, dummy_batch, oom_batch)
-    print('| training on {} GPUs'.format(args.distributed_world_size))
-    print('| max tokens per GPU = {} and max sentences per GPU = {}'.format(
+    if (args.online_eval or args.target_bleu) and not args.remove_bpe:
+        args.remove_bpe='@@ '
+
+    device_name = 'CPU' if args.cpu else 'GPU'
+    print('| training on {} {}s'.format(args.distributed_world_size, device_name))
+    print('| max tokens per {} = {} and max sentences per {} = {}'.format(
+        device_name,
         args.max_tokens,
+        device_name,
         args.max_sentences,
     ))
 
+    transformer_print(key=mlperf_log.INPUT_BATCH_SIZE, value=args.max_tokens)
+    transformer_print(key=mlperf_log.INPUT_ORDER)
+
+    trainer = Trainer(args, task, model, criterion, dummy_batch, oom_batch)
     # Initialize dataloader
     epoch_itr = task.get_batch_iterator(
         dataset=task.dataset(args.train_subset),
@@ -96,18 +133,36 @@ def main(args, init_distributed=False):
     # Train until the learning rate gets too small
     max_epoch = args.max_epoch or math.inf
     max_update = args.max_update or math.inf
+    tgt_bleu = args.target_bleu or math.inf
+    current_bleu = 0.0
     lr = trainer.get_lr()
     train_meter = StopwatchMeter()
     train_meter.start()
     valid_losses = [None]
     valid_subsets = args.valid_subset.split(',')
-    while lr > args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update:
-        # train for one epoch
-        train(args, trainer, task, epoch_itr)
 
+    transformer_print(key=mlperf_log.TRAIN_LOOP)
+
+    while lr >= args.min_lr and epoch_itr.epoch < max_epoch and trainer.get_num_updates() < max_update and current_bleu < tgt_bleu:
+        # train for one epoch
+        transformer_print(key=mlperf_log.TRAIN_EPOCH, value=epoch_itr.epoch)
+
+        start = time.time()
+        train(args, trainer, task, epoch_itr)
+        print("epoch time ", time.time() - start)
+
+        start = time.time()
         if epoch_itr.epoch % args.validate_interval == 0:
             valid_losses = validate(args, trainer, task, epoch_itr, valid_subsets)
 
+         # Eval BLEU score
+        transformer_print(key=mlperf_log.EVAL_START, value=epoch_itr.epoch)
+        if args.online_eval or (not tgt_bleu is math.inf):
+            print("begin eval")
+            current_bleu = score(args, trainer, task, epoch_itr, args.gen_subset)
+            transformer_print(key=mlperf_log.EVAL_ACCURACY, value={'epoch':epoch_itr.epoch, 'value':current_bleu})
+            transformer_print(key=mlperf_log.EVAL_TARGET, value=tgt_bleu)
+        transformer_print(key=mlperf_log.EVAL_STOP, value=epoch_itr.epoch)
         # only use first validation loss to update the learning rate
         lr = trainer.lr_step(epoch_itr.epoch, valid_losses[0])
 
@@ -115,6 +170,8 @@ def main(args, init_distributed=False):
         if epoch_itr.epoch % args.save_interval == 0:
             save_checkpoint(args, trainer, epoch_itr, valid_losses[0])
     train_meter.stop()
+    transformer_print(key=mlperf_log.RUN_STOP)
+    transformer_print(key=mlperf_log.RUN_FINAL)
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
 
 
@@ -165,7 +222,10 @@ def train(args, trainer, task, epoch_itr):
 
         if num_updates >= max_update:
             break
-
+        '''
+        if i==1:
+            break
+        '''
     # log end-of-epoch stats
     stats = get_training_stats(trainer)
     for k, meter in extra_meters.items():
@@ -255,6 +315,151 @@ def validate(args, trainer, task, epoch_itr, subsets):
 
         valid_losses.append(stats['loss'].avg)
     return valid_losses
+
+def score(args, trainer, task, epoch_itr, subset):
+
+    begin = time.time()
+
+    if not subset in task.datasets.keys():
+        task.load_dataset(subset)
+
+    src_dict = deepcopy(task.source_dictionary) # This is necessary, generation of translations
+    tgt_dict = deepcopy(task.target_dictionary) # alters target dictionary messing up with the rest of training
+
+    model = trainer.get_model()
+
+    align_dict = utils.load_align_dict(args.replace_unk)
+    #mlperf_log.transformer_print(key=mlperf_log.EVAL_SIZE, value=task.dataset(subset).__len__())
+    # Initialize data iterator
+    itr = task.get_batch_iterator(
+        dataset=task.dataset(subset),
+        max_tokens=args.max_tokens,
+        max_sentences=8,
+        max_positions=utils.resolve_max_positions(
+            task.max_positions(),
+            model.max_positions(),
+        ),
+        ignore_invalid_inputs=args.skip_invalid_size_inputs_valid_test,
+        required_batch_size_multiple=args.required_batch_size_multiple,
+        num_shards=args.distributed_world_size,
+        shard_id=args.distributed_rank,
+        ).next_epoch_itr(shuffle=False)
+
+    # Initialize generator
+    gen_timer = StopwatchMeter()
+    print(args.beam)
+    generator = SequenceGenerator(tgt_dict, beam_size=args.beam,
+        max_len_a=args.max_len_a, max_len_b=args.max_len_b, min_len=args.min_len,
+        stop_early=(not args.no_early_stop), normalize_scores=(not args.unnormalized),
+        len_penalty=args.lenpen, unk_penalty=args.unkpen,
+        sampling=args.sampling, sampling_topk=args.sampling_topk,
+        )
+    # Generate and compute BLEU
+    dict = dictionary.Dictionary()
+    scorer = bleu.Scorer(dict.pad(), dict.eos(), dict.unk())
+    num_sentences = 0
+    has_target = True
+    if args.log_translations:
+        log = open(os.path.join(args.save_dir, 'translations_epoch{}_{}'.format(epoch_itr.epoch, args.distributed_rank)), 'w+')
+    with progress_bar.build_progress_bar(args, itr) as t:
+        wps_meter = TimeMeter()
+        for sample in t:
+            sample = utils.move_to_cuda(sample) if not args.cpu else sample
+            if 'net_input' not in sample:
+                continue
+
+            prefix_tokens = None
+            if args.prefix_size > 0:
+                prefix_tokens = sample['target'][:, :args.prefix_size]
+
+            gen_timer.start()
+            hypos = generator.generate([model], sample, prefix_tokens)
+            num_generated_tokens = sum(len(h[0]['tokens']) for h in hypos)
+            gen_timer.stop(num_generated_tokens)
+
+            for i, sample_id in enumerate(sample['id'].tolist()):
+                has_target = sample['target'] is not None
+
+                # Remove padding
+                src_tokens = utils.strip_pad(sample['net_input']['src_tokens'][i, :], tgt_dict.pad())
+                target_tokens = None
+                if has_target:
+                    target_tokens = utils.strip_pad(sample['target'][i, :], tgt_dict.pad()).int().cpu()
+
+                # Either retrieve the original sentences or regenerate them from tokens.
+                if align_dict is not None:
+                    src_str = task.dataset(args.gen_subset).src.get_original_text(sample_id)
+                    target_str = task.dataset(args.gen_subset).tgt.get_original_text(sample_id)
+                else:
+                    if src_dict is not None:
+                        src_str = src_dict.string(src_tokens, args.remove_bpe)
+                    else:
+                        src_str = ""
+                    if has_target:
+                        target_str = tgt_dict.string(target_tokens, args.remove_bpe, escape_unk=True)
+
+                # Process top predictions
+                for i, hypo in enumerate(hypos[i][:min(len(hypos), args.nbest)]):
+                    hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
+                        hypo_tokens=hypo['tokens'].int().cpu(),
+                        src_str=src_str,
+                        alignment=hypo['alignment'].int().cpu() if hypo['alignment'] is not None else None,
+                        align_dict=align_dict,
+                        tgt_dict=tgt_dict,
+                        remove_bpe=args.remove_bpe,
+                    )
+
+                    if args.log_translations:
+                        log.write('H-{}\t{}\t{}\n'.format(sample_id, hypo['score'], hypo_str))
+                        log.write('P-{}\t{}\n'.format(
+                             sample_id,
+                             ' '.join(map(
+                                 lambda x: '{:.4f}'.format(x),
+                                 hypo['positional_scores'].tolist(),
+                             ))
+                        ))
+
+                    # Score only the top hypothesis
+                    if has_target and i == 0:
+                        if align_dict is not None or args.remove_bpe is not None:
+                            # Convert back to tokens for evaluation with unk replacement and/or without BPE
+                            target_tokens = tgt_dict.encode_line(target_str, add_if_not_exist=True)
+                        if hasattr(scorer, 'add_string'):
+                            scorer.add_string(target_str, hypo_str)
+                        else:
+                            scorer.add(target_tokens, hypo_tokens)
+
+                wps_meter.update(num_generated_tokens)
+                t.log({'wps': round(wps_meter.avg)})
+                num_sentences += sample['nsentences']
+
+    if args.distributed_world_size > 1:
+        _all_gather_bleu_scorer(scorer)
+    if args.log_translations:
+        log.close()
+    print('| Translated {} sentences ({} tokens) in {:.1f}s ({:.2f} sentences/s, {:.2f} tokens/s)'.format(
+        num_sentences, gen_timer.n, gen_timer.sum, num_sentences / gen_timer.sum, 1. / gen_timer.avg))
+    if has_target:
+        print('| Generate {} with beam={}: {}'.format(args.gen_subset, args.beam, scorer.result_string()))
+
+    print('| Eval completed in: {:.2f}s'.format(time.time()-begin))
+
+    return scorer.score(order=4)
+
+def _all_gather_bleu_scorer(scorer):
+    stats = distributed_utils.all_gather_list(scorer.stat)
+    bleu_stat = bleu.BleuStat()
+    bleu_stat.reflen  = reduce(lambda x,y: x+y, [s.reflen for s in stats])
+    bleu_stat.predlen = reduce(lambda x,y: x+y, [s.predlen for s in stats])
+    bleu_stat.match1  = reduce(lambda x,y: x+y, [s.match1 for s in stats])
+    bleu_stat.count1  = reduce(lambda x,y: x+y, [s.count1 for s in stats])
+    bleu_stat.match2  = reduce(lambda x,y: x+y, [s.match2 for s in stats])
+    bleu_stat.count2  = reduce(lambda x,y: x+y, [s.count2 for s in stats])
+    bleu_stat.match3  = reduce(lambda x,y: x+y, [s.match3 for s in stats])
+    bleu_stat.count3  = reduce(lambda x,y: x+y, [s.count3 for s in stats])
+    bleu_stat.match4  = reduce(lambda x,y: x+y, [s.match4 for s in stats])
+    bleu_stat.count4  = reduce(lambda x,y: x+y, [s.count4 for s in stats])
+    scorer.stat = bleu_stat
 
 
 def get_valid_stats(trainer):
