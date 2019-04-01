@@ -15,9 +15,15 @@ Downloading and preprocessing the data is handled inside submission scripts. To 
 DATASET_DIR='/your/path/to/fairsep/data/' bash run_preprocessing.sh
 ```
     
-### Steps to run and time
+## Steps to run and time
 
-## Steps to launch training
+### Steps to launch training
+
+Install fairseq 
+
+```bash
+pip install --editable .
+``` 
 
 Run the `run_and_time_gpu.sh` for GPU device
 
