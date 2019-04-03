@@ -1,7 +1,7 @@
 
 # 1. Problem 
 
-This problem uses Attention mechanisms to do language translation. And this repo base on mlperf result given by [NVIDIA](https://github.com/mlperf/results/tree/master/v0.5.0/nvidia/submission/code/translation/pytorch).
+This problem uses Attention mechanisms to do language translation. And this repo base on mlperf result [code](https://github.com/mlperf/results/tree/master/v0.5.0/nvidia/submission/code/translation/pytorch) given by NVIDIA .
 
 ## Requirements
 * [PyTorch](https://pytorch.org/) for CPU and GPU version.
