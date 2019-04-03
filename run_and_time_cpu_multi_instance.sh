@@ -12,4 +12,9 @@ echo -e "### using OMP_NUM_THREADS=$TOTAL_CORES"
 echo -e "### using $KMP_SETTING"
 echo -e "### using KMP_BLOCKTIME=$KMP_BLOCKTIME\n"
 
-source run_training_cpu.sh
+RIGHT=`expr $TOTAL_CORES / 2 - 1`
+LEFT=`expr $TOTAL_CORES / 2`
+RIGHT2=`expr $TOTAL_CORES  - 1`
+
+numactl --physcpubind=0-$RIGHT --membind=0 ./run_training_cpu.sh &
+numactl --physcpubind=$LEFT-$RIGHT2 --membind=0 ./run_training_cpu.sh
