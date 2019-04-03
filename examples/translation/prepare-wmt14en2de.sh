@@ -46,6 +46,10 @@ else
     OUTDIR=wmt14_en_de
 fi
 
+if [ "$1" == "--scaling18" ]; then
+    BPE_TOKENS=33708
+fi
+
 if [ ! -d "$SCRIPTS" ]; then
     echo "Please set SCRIPTS variable correctly to point to Moses scripts."
     exit
