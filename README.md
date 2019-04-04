@@ -4,7 +4,18 @@
 This problem uses Attention mechanisms to do language translation. And this repo base on mlperf result [code](https://github.com/mlperf/results/tree/master/v0.5.0/nvidia/submission/code/translation/pytorch) given by NVIDIA and [fairseq](https://github.com/pytorch/fairseq).
 
 ## Requirements
-* [PyTorch](https://pytorch.org/) for CPU and GPU version.
+### Install [PyTorch](https://pytorch.org/) for CPU and GPU version.
+### Install fairseq:
+
+```bash
+git clone https://github.com/XiaobingSuper/fairseq.git
+cd fairseq
+pip install --editable .
+``` 
+### Install mlperf_compliance:
+```bash
+pip install mlperf_compliance
+``` 
 
 # 2. Directions
 
@@ -14,24 +25,8 @@ Downloading and preprocessing the data is handled inside submission scripts. To 
 ```  
 DATASET_DIR='/your/path/to/fairsep/data/' bash run_preprocessing.sh
 ```
-    
-## Steps to run and time
 
 ### Steps to launch training
-
-Install fairseq:
-
-```bash
-git clone https://github.com/XiaobingSuper/fairseq.git
-cd fairseq
-pip install --editable .
-``` 
-
-Install mlperf_compliance:
-
-```bash
-pip install mlperf_compliance
-``` 
 
 Run the `run_and_time_gpu.sh` for GPU device
 
