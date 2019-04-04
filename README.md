@@ -23,7 +23,7 @@ pip install mlperf_compliance
 
 Downloading and preprocessing the data is handled inside submission scripts. To do this manually run 
 ```  
-DATASET_DIR='/your/path/to/fairsep/data/' bash run_preprocessing.sh
+DATASET_DIR='/your/path/to/fairseq/data/' bash run_preprocessing.sh
 ```
 
 ### Steps to launch training
