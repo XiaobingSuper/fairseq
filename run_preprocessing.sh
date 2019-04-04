@@ -3,7 +3,7 @@ TEXT=examples/translation/wmt14_en_de
 
 (
   cd examples/translation
-  bash prepare-wmt14en2de.sh --scaling18
+  bash prepare-wmt14en2de.sh
 )
 
 python preprocess.py \
