@@ -1,0 +1,39 @@
+# build pytorch
+conda install numpy ninja pyyaml mkl mkl-include setuptools cmake cffi typing_extensions future six requests dataclasses
+git clone https://github.com/pytorch/pytorch.git  
+cd pytorch
+python setup.py clean
+git submodule sync &&  git submodule update --init --recursive
+# checkout Onednn to your test version
+cd third_party/ideep/mkl-dnn && git chckout master && git pull && git checkout v1.7
+export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
+python setup.py install
+
+# build fairseq
+cd ..
+git clone https://github.com/XiaobingSuper/fairseq.git -b xiaobing-cpu 
+cd fairseq
+pip install --editable ./
+
+# build jemalloc
+cd ..
+git clone  https://github.com/jemalloc/jemalloc.git    
+cd jemalloc 
+./autogen.sh
+./configure --prefix=your_path
+make
+make install
+
+#prepare pre-trained model
+cd fairseq
+mkdir -p data-bin
+curl https://dl.fbaipublicfiles.com/fairseq/models/wmt14.en-fr.joined-dict.transformer.tar.bz2 | tar xvjf - -C data-bin
+url https://dl.fbaipublicfiles.com/fairseq/data/wmt14.en-fr.joined-dict.newstest2014.tar.bz2 | tar xvjf - -C data-bin
+
+# cpu runs:
+export LD_PRELOAD=/path/to/jemalloc/lib/libjemalloc.so
+export MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000"
+accuracy: bash run_inference_cpu_accuracy.sh 
+throughput: bash run_inference_cpu_multi_instance.sh
+latency: bash run_inference_cpu_multi_instance_latency.sh
+
